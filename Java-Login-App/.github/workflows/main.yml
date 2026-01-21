@@ -1,6 +1,9 @@
 name: Build, Scan, Push Docker & Deploy WAR
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
