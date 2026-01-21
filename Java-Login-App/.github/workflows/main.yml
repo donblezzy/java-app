@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+      - master
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -93,4 +97,5 @@ jobs:
               ${{ secrets.REGISTRY }}/$ECR_REPOSITORY:latest
 
 
-############
+
+####
