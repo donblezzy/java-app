@@ -16,6 +16,9 @@ jobs:
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+      REGISTRY: ${{ secrets.REGISTRY }}
+      DB_USERNAME: ${{ secrets.DB_USERNAME }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
     steps:
       # 1️⃣ Checkout repo
@@ -44,7 +47,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # 5️⃣ Trivy filesystem scan
+      # 5️⃣ Trivy filesystem scan (won't fail build)
       - name: Trivy FS Scan
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -71,31 +74,42 @@ jobs:
       # 7️⃣ Deploy Docker container to Ubuntu EC2
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          REGISTRY: ${{ secrets.REGISTRY }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Install AWS CLI if missing
+            if ! command -v aws &> /dev/null; then
+              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+              unzip awscliv2.zip
+              sudo ./aws/install
+            fi
+
             # Login to ECR
-            aws ecr get-login-password --region $AWS_REGION \
-              | docker login --username AWS --password-stdin ${{ secrets.REGISTRY }}
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY
 
-            # Pull the latest Docker image
-            docker pull ${{ secrets.REGISTRY }}/$ECR_REPOSITORY:latest
+            # Pull latest image
+            docker pull $REGISTRY/$ECR_REPOSITORY:latest
 
-            # Stop & remove previous container
+            # Stop & remove old container
             docker stop my-java-app || true
             docker rm my-java-app || true
 
-            # Run new container with all secrets injected
+            # Run new container
             docker run -d \
               --name my-java-app \
               --restart unless-stopped \
               -p 8080:8080 \
-              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              ${{ secrets.REGISTRY }}/$ECR_REPOSITORY:latest
+              -e DB_USERNAME=$DB_USERNAME \
+              -e DB_PASSWORD=$DB_PASSWORD \
+              $REGISTRY/$ECR_REPOSITORY:latest
 
 
-
-########
+####################
