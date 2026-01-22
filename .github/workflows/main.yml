@@ -17,8 +17,6 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
       REGISTRY: ${{ secrets.REGISTRY }}
-      DB_USERNAME: ${{ secrets.DB_USERNAME }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
     steps:
       # 1️⃣ Checkout repo
@@ -47,14 +45,14 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # 5️⃣ Trivy filesystem scan (won't fail build)
+      # 5️⃣ Trivy filesystem scan
       - name: Trivy FS Scan
         uses: aquasecurity/trivy-action@0.20.0
         with:
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: 0
+          exit-code: 0       # Do NOT fail on vulnerabilities
           ignore-unfixed: true
 
       # 6️⃣ Build & Push Docker image to ECR
@@ -74,35 +72,36 @@ jobs:
       # 7️⃣ Deploy Docker container to Ubuntu EC2
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-          REGISTRY: ${{ secrets.REGISTRY }}
-          DB_USERNAME: ${{ secrets.DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Install AWS CLI if missing
+            # Install AWS CLI v2 if missing
             if ! command -v aws &> /dev/null; then
               curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
               unzip awscliv2.zip
               sudo ./aws/install
             fi
 
-            # Login to ECR
+            # Export GitHub secrets as environment variables
+            export AWS_REGION=${{ secrets.AWS_REGION }}
+            export REGISTRY=${{ secrets.REGISTRY }}
+            export ECR_REPOSITORY=${{ secrets.ECR_REPOSITORY }}
+            export DB_USERNAME=${{ secrets.DB_USERNAME }}
+            export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+
+            echo "Logging in to ECR..."
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY
 
-            # Pull latest image
+            echo "Pulling latest Docker image..."
             docker pull $REGISTRY/$ECR_REPOSITORY:latest
 
-            # Stop & remove old container
+            echo "Stopping previous container..."
             docker stop my-java-app || true
             docker rm my-java-app || true
 
-            # Run new container
+            echo "Running new Docker container..."
             docker run -d \
               --name my-java-app \
               --restart unless-stopped \
@@ -112,4 +111,5 @@ jobs:
               $REGISTRY/$ECR_REPOSITORY:latest
 
 
-####################
+
+#####################
