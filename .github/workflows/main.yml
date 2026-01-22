@@ -107,7 +107,7 @@ jobs:
             docker run -d \
               --name my-java-app \
               --restart unless-stopped \
-              -p 8080:8080 \
+              -p 80:8080 \
               -e DB_USERNAME=$DB_USERNAME \
               -e DB_PASSWORD=$DB_PASSWORD \
               $REGISTRY/$ECR_REPOSITORY:latest
